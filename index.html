@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Chinese Tones Soundboard (Responsive)</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    :root {
+      --gap: 12px;           /* space between buttons */
+      --btn-min: 64px;       /* smallest a button can get */
+      --btn-max: 130px;      /* largest a button can get */
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    }
+    body {
+      display:flex; min-height:100dvh; margin:0;
+      align-items:center; justify-content:center;
+      background:#111; color:#eee;
+    }
+    .wrap { text-align:center; padding:24px; max-width: 720px; width: 100%; }
+    h1 { font-size:18px; font-weight:600; opacity:.7; margin-bottom:16px; }
+
+    /* Row always stays on one line; width clamps to viewport */
+    .row {
+      display:flex; flex-wrap:nowrap; justify-content:center; align-items:stretch;
+      gap: var(--gap);
+      width: min(100vw - 48px, 600px); /* viewport minus wrap padding */
+      margin: 0 auto;
+    }
+
+    /* Buttons auto-size so 4 fit on one line; remain perfect squares */
+    button {
+      flex: 1 1 0;
+      width: clamp(var(--btn-min), calc((100% - 3*var(--gap))/4), var(--btn-max));
+      aspect-ratio: 1 / 1;                  /* square */
+      font-size: clamp(18px, 6vw, 28px);    /* text scales on small screens */
+      font-weight:700;
+      border-radius:16px; border:none; cursor:pointer;
+      background:#1f1f1f; color:#fff; box-shadow:0 6px 16px rgba(0,0,0,.35);
+      transition: transform .06s ease, background .2s ease;
+      -webkit-tap-highlight-color: transparent;
+    }
+    button:hover { background:#292929; }
+    button:active { transform: translateY(1px) scale(.99); background:#2a2a2a; }
+
+    /* Tiny screens: tighten gap slightly; still fits 4 across */
+    @media (max-width: 380px) {
+      :root { --gap: 8px; }
+      button { font-size: clamp(16px, 5.5vw, 24px); }
+    }
+
+    /* Log + controls */
+    .log-wrap { margin-top:16px; display:flex; align-items:flex-start; gap:10px; justify-content:center; flex-wrap:wrap; }
+    #log {
+      width:min(90vw, 560px); height:72px; padding:10px; border-radius:10px;
+      background:#0c0c0c; color:#eee; border:1px solid #333; resize:vertical;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    }
+    .controls { display:flex; gap:8px; align-items:center; }
+    .small-btn {
+      font-size:14px; font-weight:600; padding:10px 14px; height:auto; width:auto;
+      border-radius:10px; background:#1f1f1f; border:1px solid #2a2a2a; cursor:pointer;
+      transition: transform .06s ease, background .2s ease;
+    }
+    .small-btn:hover { background:#242424; }
+    .small-btn:active { transform: translateY(1px) scale(.99); background:#2b2b2b; }
+    .fineprint { margin-top:12px; font-size:12px; opacity:.6; }
+    .toast {
+      position: fixed; left:50%; bottom:18px; transform:translateX(-50%);
+      background:#1f1f1f; color:#fff; padding:8px 12px; border-radius:999px; border:1px solid #2a2a2a;
+      font-size:12px; opacity:0; pointer-events:none; transition: opacity .2s ease;
+    }
+    .toast.show { opacity:1; }
+    .mode { margin-top:8px; font-size:12px; opacity:.6; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Chinese Tones Soundboard</h1>
+
+    <div class="row">
+      <button data-sound="1" aria-label="Play 1">1̄</button>
+      <button data-sound="2" aria-label="Play 2">2́</button>
+      <button data-sound="3" aria-label="Play 3">3̌</button>
+      <button data-sound="4" aria-label="Play 4">4̀</button>
+    </div>
+
+    <div class="log-wrap">
+      <textarea id="log" readonly placeholder="Your sequence appears here…"></textarea>
+      <div class="controls">
+        <button id="copyBtn" class="small-btn" aria-label="Copy sequence">Copy</button>
+        <button id="clearBtn" class="small-btn" aria-label="Clear sequence">Clear</button>
+      </div>
+    </div>
+
+    <!-- HTMLAudio for fallback/preload -->
+    <audio id="a1" preload="auto" src="assets/ma1.m4a" style="display:none"></audio>
+    <audio id="a2" preload="auto" src="assets/ma2.m4a" style="display:none"></audio>
+    <audio id="a3" preload="auto" src="assets/ma3.m4a" style="display:none"></audio>
+    <audio id="a4" preload="auto" src="assets/ma4.m4a" style="display:none"></audio>
+
+    <div class="fineprint">© 2025 Steve Gong</div>
+    <div id="mode" class="mode"></div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    const logEl   = document.getElementById('log');
+    const copyBtn = document.getElementById('copyBtn');
+    const clearBtn= document.getElementById('clearBtn');
+    const toastEl = document.getElementById('toast');
+    const modeEl  = document.getElementById('mode');
+
+    const urls = {
+      "1": "assets/ma1.m4a",
+      "2": "assets/ma2.m4a",
+      "3": "assets/ma3.m4a",
+      "4": "assets/ma4.m4a",
+    };
+
+    function appendToLog(symbol) {
+      logEl.value = logEl.value ? `${logEl.value} ${symbol}` : symbol;
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+    function showToast(msg) {
+      toastEl.textContent = msg;
+      toastEl.classList.add('show');
+      clearTimeout(showToast._t);
+      showToast._t = setTimeout(() => toastEl.classList.remove('show'), 1200);
+    }
+
+    /* -------- HTMLAudio sequential fallback -------- */
+    const base = {
+      "1": document.getElementById("a1"),
+      "2": document.getElementById("a2"),
+      "3": document.getElementById("a3"),
+      "4": document.getElementById("a4"),
+    };
+    const htmlQueue = [];
+    let htmlPlayer = new Audio();
+    let htmlPlaying = false;
+
+    function htmlEnqueue(id) {
+      htmlQueue.push(id);
+      if (!htmlPlaying) htmlPlayNext();
+    }
+    function htmlPlayNext() {
+      if (htmlQueue.length === 0) { htmlPlaying = false; return; }
+      htmlPlaying = true;
+      const id = htmlQueue.shift();
+      const src = base[id]?.src;
+      if (!src) { htmlPlayNext(); return; }
+      try { htmlPlayer.pause(); } catch {}
+      htmlPlayer.src = src;
+      try { htmlPlayer.currentTime = 0; } catch {}
+      htmlPlayer.play().catch(err => {
+        console.error(err);
+        showToast('Playback error (fallback)');
+        htmlPlayNext();
+      });
+    }
+    htmlPlayer.addEventListener('ended', htmlPlayNext);
+    htmlPlayer.addEventListener('error', htmlPlayNext);
+
+    /* -------- Web Audio (gapless) with automatic fallback -------- */
+    let ctx = null;
+    let buffers = {};
+    let waLoaded = false;
+    let waFailed = false;
+    let waLoadingPromise = null;
+    let nextStartTime = 0;
+
+    const isHTTP = /^https?:/i.test(location.protocol);
+
+    async function ensureWebAudio() {
+      if (waFailed) throw new Error('WebAudio disabled');
+      if (!isHTTP) throw new Error('Not http(s); using fallback');
+      if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+      if (waLoaded) return;
+
+      if (!waLoadingPromise) {
+        waLoadingPromise = (async () => {
+          try {
+            // unlock on first gesture
+            const unlock = () => { ctx?.resume?.(); window.removeEventListener('mousedown', unlock); window.removeEventListener('touchstart', unlock); window.removeEventListener('keydown', unlock); };
+            window.addEventListener('mousedown', unlock);
+            window.addEventListener('touchstart', unlock, {passive:true});
+            window.addEventListener('keydown', unlock);
+
+            const entries = Object.entries(urls);
+            const decoded = await Promise.all(entries.map(async ([id, url]) => {
+              const res = await fetch(url);
+              if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
+              const ab = await res.arrayBuffer();
+              const buf = await new Promise((resolve, reject) => {
+                ctx.decodeAudioData(ab.slice(0), resolve, reject);
+              });
+              return [id, buf];
+            }));
+            for (const [id, buf] of decoded) buffers[id] = buf;
+            waLoaded = true;
+            modeEl.textContent = 'Mode: Web Audio (gapless)';
+            showToast('Audio ready');
+          } catch (e) {
+            console.error(e);
+            waFailed = true;
+            modeEl.textContent = 'Mode: HTMLAudio (fallback)';
+            showToast('Using fallback (serve via http for gapless)');
+            throw e;
+          }
+        })();
+      }
+      return waLoadingPromise;
+    }
+
+    function waSchedule(id) {
+      const buf = buffers[id];
+      if (!buf) { showToast('Not loaded'); return; }
+      const now = ctx.currentTime;
+      if (!nextStartTime || nextStartTime < now) nextStartTime = now;
+
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+
+      // micro fade to avoid clicks
+      const gain = ctx.createGain();
+      const g = gain.gain;
+      const dur = buf.duration;
+      const fade = Math.min(0.005, dur / 10);
+      g.setValueAtTime(0.0001, nextStartTime);
+      g.exponentialRampToValueAtTime(1, nextStartTime + fade);
+      g.setValueAtTime(1, nextStartTime + Math.max(0, dur - fade));
+      g.exponentialRampToValueAtTime(0.0001, nextStartTime + dur);
+
+      src.connect(gain).connect(ctx.destination);
+      src.start(nextStartTime);
+
+      nextStartTime += dur;
+    }
+
+    async function enqueue(id) {
+      try {
+        await ensureWebAudio();
+        waSchedule(id);
+      } catch {
+        htmlEnqueue(id);
+      }
+    }
+
+    function handlePress(btn) {
+      const id = btn.dataset.sound;
+      if (!id) return;
+      appendToLog(btn.textContent.trim());
+      enqueue(id);
+    }
+
+    for (const btn of document.querySelectorAll('button[data-sound]')) {
+      btn.addEventListener('click', () => handlePress(btn));
+      document.addEventListener('keydown', (e) => {
+        if (e.key === btn.dataset.sound) handlePress(btn);
+      }, { passive: true });
+    }
+
+    clearBtn.addEventListener('click', () => { logEl.value = ''; showToast('Cleared'); });
+    copyBtn.addEventListener('click', async () => {
+      const text = logEl.value || '';
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(text);
+        } else {
+          logEl.removeAttribute('readonly');
+          logEl.select(); logEl.setSelectionRange(0, text.length);
+          const ok = document.execCommand('copy');
+          logEl.setAttribute('readonly', '');
+          window.getSelection().removeAllRanges();
+          if (!ok) throw new Error('execCommand failed');
+        }
+        showToast('Copied');
+      } catch (err) { console.error(err); showToast('Copy failed'); }
+    });
+
+    modeEl.textContent = isHTTP ? 'Mode: initializing…' : 'Mode: HTMLAudio (fallback)';
+    window.addEventListener('touchstart', () => { try { ctx?.resume?.(); } catch {} }, { once:true, passive:true });
+  </script>
+</body>
+</html>
